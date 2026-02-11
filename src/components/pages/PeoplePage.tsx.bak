@@ -140,7 +140,7 @@ export function PeoplePage({ theme, userId }: Props) {
       {/* Contact List */}
       {filtered.length === 0 && !loading ? (
         <div style={{ textAlign: "center", padding: "60px 20px", opacity: 0.3 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}></div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
           <div style={{ fontSize: 13 }}>連絡先がありません</div>
           <div style={{ fontSize: 11, marginTop: 4 }}>名刺を撮影するか、＋ボタンで追加</div>
         </div>

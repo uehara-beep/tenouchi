@@ -23,7 +23,17 @@ export async function GET(req: NextRequest) {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // Store tokens in cookie (httpOnly for security)
+    // Store tokens in Supabase
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const cookieToken = req.cookies.get("gmail_token")?.value;
+    // Try to find user from existing cookie or use first user
+    const { data: profiles } = await supabase.from("profiles").select("id").limit(1);
+    if (profiles?.[0]) {
+      await supabase.from("profiles").update({ gmail_token: JSON.stringify(tokens) }).eq("id", profiles[0].id);
+    }
+
+    // Also store in cookie
     const response = NextResponse.redirect(new URL("/?gmail=connected", req.url));
     response.cookies.set("gmail_token", JSON.stringify(tokens), {
       httpOnly: true,

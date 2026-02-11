@@ -139,13 +139,13 @@ export async function POST(req: NextRequest) {
     if (expenseMatch && userId) {
       let amt = parseInt(expenseMatch[1].replace(/,/g, "")); if (message.includes("万")) amt *= 10000;
       let cat = expenseMatch[2]; if (cat === "ガソリン") cat = "交通費";
-      await supabase.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
+      const sb = getSupabase(); await sb.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
       return NextResponse.json({reply:"承知しました。\n\n[MONEY] ¥"+amt.toLocaleString()+" / "+cat+" を記録しました",savedAction:"expense"});
     }
     if (expenseMatch2 && userId) {
       let amt = parseInt(expenseMatch2[2].replace(/,/g, "")); if (message.includes("万")) amt *= 10000;
       let cat = expenseMatch2[1]; if (cat === "ガソリン") cat = "交通費";
-      await supabase.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
+      const sb = getSupabase(); await sb.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
       return NextResponse.json({reply:"承知しました。\n\n[MONEY] ¥"+amt.toLocaleString()+" / "+cat+" を記録しました",savedAction:"expense"});
     }
     // "2万使った" style
@@ -154,26 +154,13 @@ export async function POST(req: NextRequest) {
       const amt = parseInt(amtMatch[1]) * 10000;
       const catM = message.match(/(食費|交通費|交際費|消耗品費|通信費|家賃|光熱費|ガソリン)/);
       const cat = catM ? (catM[1]==="ガソリン"?"交通費":catM[1]) : "その他";
-      await supabase.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
+      const sb = getSupabase(); await sb.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0]});
       return NextResponse.json({reply:"承知しました。\n\n[MONEY] ¥"+amt.toLocaleString()+" / "+cat+" を記録しました",savedAction:"expense"});
     }
-    // Income detection
-    const incomeMatch = message.match(/(収入|入金|給料|ボーナス|臨時収入|売上|振込).*?(\d[\d,]*)\s*万?\s*円?/);
-    const incomeMatch2 = message.match(/(\d[\d,]*)\s*万?\s*円?.*?(収入|入金|給料|ボーナス|臨時収入|売上|振込)/);
-    if ((incomeMatch || incomeMatch2) && userId) {
-      const m = incomeMatch || incomeMatch2;
-      const amtIdx = incomeMatch ? 2 : 1;
-      const catIdx = incomeMatch ? 1 : 2;
-      let amt = parseInt(m[amtIdx].replace(/,/g, "")); if (message.includes("万")) amt *= 10000;
-      const cat = m[catIdx];
-      await supabase.from("expenses").insert({user_id:userId,amount:amt,category:cat,description:message,date:new Date().toISOString().split("T")[0],type:"income"});
-      return NextResponse.json({reply:"承知しました。\n\n[INCOME] +¥"+amt.toLocaleString()+" / "+cat+" を記録しました",savedAction:"income"});
-    }
-
     // Direct note detection
     const noteMatch = message.match(/^(メモ|memo|記録|覚え|ノート)[：:\s]+(.+)/i);
     if (noteMatch && userId) {
-      await supabase.from("notes").insert({user_id:userId,content:noteMatch[2],tags:""});
+      const sb = getSupabase(); await sb.from("notes").insert({user_id:userId,content:noteMatch[2],tags:""});
       return NextResponse.json({reply:"[MEMO] メモを保存しました\n\n「"+noteMatch[2]+"」",savedAction:"note"});
     }
 

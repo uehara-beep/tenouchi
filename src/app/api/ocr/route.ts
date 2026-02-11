@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+export async function POST(req: NextRequest) {
+  try {
+    const formData = await req.formData();
+    const image = formData.get("image") as File | null;
+    if (!image) return NextResponse.json({ error: "画像が必要です" }, { status: 400 });
+
+    const bytes = await image.arrayBuffer();
+    
+    // Compress image to under 4MB
+    let buffer: any = Buffer.from(bytes);
+    let quality = 80;
+    
+    if (buffer.length > 4 * 1024 * 1024) {
+      buffer = await sharp(buffer)
+        .resize(2400, 2400, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+    } else if (buffer.length > 2 * 1024 * 1024) {
+      buffer = await sharp(buffer)
+        .resize(2800, 2800, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    }
+
+    const base64 = buffer.toString("base64");
+    const mediaType = "image/jpeg" as const;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system: `You are an OCR specialist. Extract ALL information from the image.
+RULES: Respond ONLY with valid JSON, no markdown, no backticks.
+
+For BUSINESS CARDS (extract EVERY field):
+{"type":"business_card","data":{"name":"氏名","name_reading":"ローマ字/ふりがな","company":"会社名","title":"役職","department":"部署","email":"メール","phone":"電話番号(TEL)","mobile":"携帯(Mobile)","fax":"FAX","postal_code":"郵便番号","address":"住所","website":"URL","license":"資格/許可番号"}}
+- Leave "" for fields not found. Read ALL phone numbers separately.
+
+For RECEIPTS:
+{"type":"receipt","data":{"store":"店名","total":金額,"date":"日付","category":"カテゴリ","items":[{"name":"商品名","price":金額}]}}
+
+For OTHER: {"type":"document","data":{"summary":"要約"}}`,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: "全項目を漏れなく読み取ってJSON形式で返してください。" }
+        ]
+      }]
+    });
+
+    const text = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map(b => b.text).join("");
+    try {
+      return NextResponse.json(JSON.parse(text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()));
+    } catch {
+      return NextResponse.json({ type: "document", data: { summary: text } });
+    }
+  } catch (error: any) {
+    console.error("OCR error:", error);
+    return NextResponse.json({ error: "画像解析に失敗しました" }, { status: 500 });
+  }
+}

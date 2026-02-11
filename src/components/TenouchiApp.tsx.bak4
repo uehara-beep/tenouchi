@@ -11,7 +11,7 @@ import { useSecret } from "@/hooks/useSecret";
 
 type Msg = { role:string; text:string; translated?:string; showTranslation?:boolean; imageUrl?:string };
 
-export default function TenouchiApp({ userId, profile }: any) {
+export default function TenouchiApp() {
   const [page, setPage] = useState<PageId>("timeline");
   const { season, theme } = useSeason();
   const { isSecret, showPinPad: showPin, requestUnlock: requestSecret, unlock: confirmPin, lock: exitSecret } = useSecret();
@@ -21,11 +21,11 @@ export default function TenouchiApp({ userId, profile }: any) {
   const renderPage = () => {
     switch(page) {
       case "timeline": return <TimelinePage theme={secretTheme} />;
-      case "money": return <MoneyPage theme={secretTheme} isSecret={isSecret} userId={userId} />;
+      case "money": return <MoneyPage theme={secretTheme} isSecret={isSecret} />;
       case "family": return <FamilyPage theme={secretTheme} />;
       case "discover": return <DiscoverPage theme={secretTheme} />;
       case "people": return <PeoplePage theme={secretTheme} isSecret={isSecret} onRequestUnlock={requestSecret} />;
-      case "notes": return <NotesPage theme={secretTheme} userId={userId} />;
+      case "notes": return <NotesPage theme={secretTheme} />;
       default: return <TimelinePage theme={secretTheme} />;
     }
   };
@@ -70,7 +70,7 @@ export default function TenouchiApp({ userId, profile }: any) {
     const userMsg = chatInput.trim();
     setMsgs(p => [...p, {role:"user",text:userMsg}]); setChatInput(""); setTyping(true);
     try {
-      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:userMsg,userId,history:msgs.slice(-6).map(m=>({role:m.role,text:m.text}))})});
+      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:userMsg})});
       const data = await res.json();
       const reply = data.reply || "了解しました。";
       setMsgs(p => [...p, {role:"ai",text:reply}]); speak(reply);
@@ -91,12 +91,7 @@ export default function TenouchiApp({ userId, profile }: any) {
       else if (data.data?.name) {
         reply = "📇 名刺読取完了\n👤 " + (data.data.name||"不明") + "\n🏢 " + (data.data.company||"") + (data.data.title ? "\n💼 " + data.data.title : "") + "\n📧 " + (data.data.email||"") + "\n📞 " + (data.data.phone||"") + (data.data.mobile ? "\n📱 " + data.data.mobile : "") + (data.data.fax ? "\n📠 FAX: " + data.data.fax : "") + (data.data.address ? "\n📍 " + (data.data.postal_code||"") + " " + data.data.address : "");
         try {
-          const uid = userId || (await (await import("@/lib/supabase")).supabase.auth.getUser()).data.user?.id;
-          console.log("Saving contact with userId:", uid);
-          const saveRes = await fetch("/api/contacts", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({userId: uid, ...data.data, source:"business_card"}) });
-          const saveResult = await saveRes.json();
-          console.log("Save result:", saveResult);
-          if (!saveRes.ok) throw new Error(saveResult.error);
+          await fetch("/api/contacts", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({userId, ...data.data, source:"business_card"}) });
           reply += "\n\n✅ CONTACTSに保存しました";
         } catch { reply += "\n\n⚠️ 保存エラー"; }
       }

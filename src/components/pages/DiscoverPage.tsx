@@ -1,162 +1,50 @@
+// @ts-nocheck
 "use client";
-
-import { GlassCard } from "@/components/cards";
-import { Icons } from "@/components/ui/Icons";
-import { Theme, COLORS } from "@/lib/themes";
-import { TRENDS_DATA } from "@/lib/data";
-
-interface DiscoverPageProps {
-  theme: Theme;
-}
-
+import { useState } from "react";
+interface DiscoverPageProps { theme: any; }
 export function DiscoverPage({ theme }: DiscoverPageProps) {
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<{q:string,a:string}[]>([]);
+  const search = async () => {
+    if (!query.trim() || loading) return;
+    setLoading(true); setResult("");
+    try {
+      const res = await fetch("/api/search", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({query}) });
+      const json = await res.json();
+      if (json.result) { setResult(json.result); setHistory(prev => [{q:query,a:json.result},...prev].slice(0,10)); }
+      else setResult("検索結果が見つかりませんでした");
+    } catch { setResult("検索エラーが発生しました"); }
+    setLoading(false);
+  };
+  const accent = theme?.accent || "#4A9EFF";
   return (
-    <div>
-      {/* Search bar */}
-      <GlassCard
-        delay={0}
-        style={{ padding: "14px 18px", marginBottom: 20, borderRadius: 28 }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={COLORS.text3}
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <span style={{ fontSize: 14, color: COLORS.text3 }}>検索...</span>
+    <div style={{ padding:"70px 16px 100px" }}>
+      <div style={{ fontSize:10, fontWeight:700, letterSpacing:5, fontFamily:"'Orbitron',sans-serif", color:accent, opacity:0.8, marginBottom:16 }}>SEARCH</div>
+      <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key==="Enter" && search()} placeholder="検索..." style={{ flex:1, padding:"12px 16px", borderRadius:14, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.04)", color:"#F0F0F5", fontSize:14, outline:"none" }} />
+        <button onClick={search} disabled={loading} style={{ padding:"12px 20px", borderRadius:14, border:"none", background:`linear-gradient(135deg,${accent},${theme?.accent2||"#7B61FF"})`, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.5:1 }}>
+          {loading?"...":"検索"}
+        </button>
+      </div>
+      {result && (
+        <div style={{ padding:"16px 18px", borderRadius:14, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.06)", marginBottom:16 }}>
+          <div style={{ fontSize:10, opacity:0.4, letterSpacing:3, fontFamily:"'Orbitron',sans-serif", marginBottom:8 }}>RESULT</div>
+          <div style={{ fontSize:14, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{result}</div>
         </div>
-      </GlassCard>
-
-      {/* AI Picks */}
-      <GlassCard
-        delay={80}
-        style={{
-          marginBottom: 24,
-          borderRadius: 28,
-          borderColor: `${theme.accent}20`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          {Icons.ai(theme.accent, 14)}
-          <span
-            style={{
-              fontSize: 9,
-              color: theme.accent,
-              fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: 2,
-            }}
-          >
-            AI PICKS
-          </span>
-        </div>
-        <div style={{ fontSize: 14, color: COLORS.text1, lineHeight: 1.6 }}>
-          NEXCO西日本が来月の予算計画を発表。水切り工事の需要が前年比120%増。
-        </div>
-      </GlassCard>
-
-      {/* Trends by source */}
-      {TRENDS_DATA.map((trend, ti) => (
-        <div key={trend.src} style={{ marginBottom: 22 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: trend.color,
-                boxShadow: `0 0 10px ${trend.color}60`,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                color: trend.color,
-                fontFamily: "'Orbitron', sans-serif",
-                letterSpacing: 2,
-                fontWeight: 700,
-              }}
-            >
-              {trend.src}
-            </span>
-            <div
-              style={{
-                flex: 1,
-                height: 1,
-                background: `linear-gradient(90deg, ${trend.color}30, transparent)`,
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              overflowX: "auto",
-              paddingBottom: 4,
-            }}
-          >
-            {trend.items.map((item, i) => (
-              <GlassCard
-                key={item}
-                delay={ti * 80 + i * 60}
-                style={{
-                  padding: "16px",
-                  borderRadius: 20,
-                  minWidth: 170,
-                  flexShrink: 0,
-                  borderColor: `${trend.color}15`,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 8,
-                  }}
-                >
-                  {Icons.trend(trend.color, 13)}
-                  <span
-                    style={{
-                      fontSize: 8,
-                      color: trend.color,
-                      fontFamily: "'Orbitron', sans-serif",
-                    }}
-                  >
-                    TREND
-                  </span>
-                </div>
-                <div
-                  style={{ fontSize: 14, color: COLORS.text1, fontWeight: 500 }}
-                >
-                  {item}
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        </div>
-      ))}
+      )}
+      {history.length > 0 && !result && (
+        <>
+          <div style={{ fontSize:10, opacity:0.4, letterSpacing:3, fontFamily:"'Orbitron',sans-serif", marginBottom:12 }}>HISTORY</div>
+          {history.map((h,i) => (
+            <div key={i} onClick={() => {setQuery(h.q);setResult(h.a);}} style={{ padding:"12px 16px", borderRadius:12, background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.05)", marginBottom:6, cursor:"pointer" }}>
+              <div style={{ fontSize:13, fontWeight:600 }}>{h.q}</div>
+              <div style={{ fontSize:11, opacity:0.4, marginTop:4 }}>{h.a.slice(0,60)}...</div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

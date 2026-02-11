@@ -11,7 +11,7 @@ import { useSecret } from "@/hooks/useSecret";
 
 type Msg = { role:string; text:string; translated?:string; showTranslation?:boolean; imageUrl?:string };
 
-export default function TenouchiApp() {
+export default function TenouchiApp({ userId, profile }: any) {
   const [page, setPage] = useState<PageId>("timeline");
   const { season, theme } = useSeason();
   const { isSecret, showPinPad: showPin, requestUnlock: requestSecret, unlock: confirmPin, lock: exitSecret } = useSecret();
@@ -21,11 +21,11 @@ export default function TenouchiApp() {
   const renderPage = () => {
     switch(page) {
       case "timeline": return <TimelinePage theme={secretTheme} />;
-      case "money": return <MoneyPage theme={secretTheme} isSecret={isSecret} />;
-      case "family": return <FamilyPage theme={secretTheme} />;
+      case "money": return <MoneyPage theme={secretTheme} isSecret={isSecret} userId={userId} />;
+      case "family": return <FamilyPage theme={secretTheme} userId={userId} />;
       case "discover": return <DiscoverPage theme={secretTheme} />;
       case "people": return <PeoplePage theme={secretTheme} isSecret={isSecret} onRequestUnlock={requestSecret} />;
-      case "notes": return <NotesPage theme={secretTheme} />;
+      case "notes": return <NotesPage theme={secretTheme} userId={userId} />;
       default: return <TimelinePage theme={secretTheme} />;
     }
   };
@@ -70,7 +70,7 @@ export default function TenouchiApp() {
     const userMsg = chatInput.trim();
     setMsgs(p => [...p, {role:"user",text:userMsg}]); setChatInput(""); setTyping(true);
     try {
-      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:userMsg})});
+      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:userMsg,userId,history:msgs.slice(-6).map(m=>({role:m.role,text:m.text}))})});
       const data = await res.json();
       const reply = data.reply || "了解しました。";
       setMsgs(p => [...p, {role:"ai",text:reply}]); speak(reply);
@@ -88,7 +88,18 @@ export default function TenouchiApp() {
       const data = await res.json();
       let reply = "画像読み取り失敗";
       if (data.data?.total) reply = "📋 レシート\n🏪 " + (data.data.store||"不明") + "\n💰 ¥" + (data.data.total||0).toLocaleString() + "\n📁 " + (data.data.category||"その他");
-      else if (data.data?.name) reply = "📇 名刺\n👤 " + (data.data.name||"不明") + "\n🏢 " + (data.data.company||"") + "\n📧 " + (data.data.email||"") + "\n📱 " + (data.data.phone||"");
+      else if (data.data?.name) {
+        reply = "📇 名刺読取完了\n👤 " + (data.data.name||"不明") + "\n🏢 " + (data.data.company||"") + (data.data.title ? "\n💼 " + data.data.title : "") + "\n📧 " + (data.data.email||"") + "\n📞 " + (data.data.phone||"") + (data.data.mobile ? "\n📱 " + data.data.mobile : "") + (data.data.fax ? "\n📠 FAX: " + data.data.fax : "") + (data.data.address ? "\n📍 " + (data.data.postal_code||"") + " " + data.data.address : "");
+        try {
+          const uid = userId || (await (await import("@/lib/supabase")).supabase.auth.getUser()).data.user?.id;
+          console.log("Saving contact with userId:", uid);
+          const saveRes = await fetch("/api/contacts", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({userId: uid, ...data.data, source:"business_card"}) });
+          const saveResult = await saveRes.json();
+          console.log("Save result:", saveResult);
+          if (!saveRes.ok) throw new Error(saveResult.error);
+          reply += "\n\n✅ CONTACTSに保存しました";
+        } catch { reply += "\n\n⚠️ 保存エラー"; }
+      }
       else if (data.data?.summary) reply = data.data.summary;
       setMsgs(p => [...p, {role:"ai",text:reply}]); speak(reply.split("\n")[0]);
     } catch { setMsgs(p => [...p, {role:"ai",text:"画像処理エラー"}]); }
@@ -107,7 +118,7 @@ export default function TenouchiApp() {
     } catch {}
   };
 
-  const suggestions = ["未読メールある？","ガソリン5000円","あいりに連絡して","今月の支出まとめ"];
+  const suggestions = ["未読メールある？","ガソリン5000円","今月の支出まとめ"];
 
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(180deg,"+secretTheme.bg1+","+secretTheme.bg2+")",color:"#F0F0F5",fontFamily:"'Rajdhani',sans-serif",position:"relative",overflow:"hidden"}}>

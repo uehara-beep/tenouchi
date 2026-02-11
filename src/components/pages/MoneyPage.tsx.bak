@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 import { useState, useEffect } from "react";
-interface Expense { id: string; amount: number; category: string; description: string; date: string; created_at: string; type?: string; }
+interface Expense { id: string; amount: number; category: string; description: string; date: string; created_at: string; }
 interface MoneyPageProps { theme: any; isSecret?: boolean; userId?: string; }
 const CAT_COLORS: Record<string,string> = { "食費":"#4ADE80", "交通費":"#60A5FA", "交際費":"#F472B6", "消耗品費":"#FBBF24", "通信費":"#A78BFA", "家賃":"#FB923C", "光熱費":"#34D399", "その他":"#94A3B8" };
 export function MoneyPage({ theme, isSecret, userId }: MoneyPageProps) {

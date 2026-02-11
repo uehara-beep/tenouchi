@@ -27,7 +27,17 @@ export async function GET(req: NextRequest) {
   // Fetch recent emails
   if (action === "fetch") {
     try {
-      const tokenStr = req.cookies.get("gmail_token")?.value;
+      let tokenStr = req.cookies.get("gmail_token")?.value;
+      // Fallback: load from Supabase if no cookie
+      if (!tokenStr) {
+        const { createClient } = await import("@supabase/supabase-js");
+        const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+        const uid = req.nextUrl.searchParams.get("userId");
+        if (uid) {
+          const { data } = await sb.from("profiles").select("gmail_token").eq("id", uid).single();
+          if (data?.gmail_token) tokenStr = data.gmail_token;
+        }
+      }
       if (!tokenStr) {
         return NextResponse.json({ error: "Not authenticated", authUrl: "/api/gmail?action=auth" }, { status: 401 });
       }

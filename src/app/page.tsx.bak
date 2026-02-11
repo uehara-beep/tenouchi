@@ -158,7 +158,7 @@ export default function Home() {
   }, []);
 
   const loadProfile = async (userId: string) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    const { data } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
     setProfile(data);
     setLoading(false);
   };
@@ -252,7 +252,7 @@ function OnboardingPage({ userId, onComplete }: { userId: string; onComplete: (p
         secret_pin: pin,
         onboarding_done: true,
       })
-      .eq("id", userId)
+      .eq("user_id", userId)
       .select()
       .single();
 
@@ -274,7 +274,7 @@ function OnboardingPage({ userId, onComplete }: { userId: string; onComplete: (p
         personality,
         onboarding_done: true,
       })
-      .eq("id", userId)
+      .eq("user_id", userId)
       .select()
       .single();
 

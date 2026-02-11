@@ -1,0 +1,165 @@
+// @ts-nocheck
+import { useState, useEffect, useRef } from "react";
+import { Header } from "./nav/Header";
+import { BottomNav, PageId } from "./nav/BottomNav";
+import { TimelinePage, MoneyPage, FamilyPage, DiscoverPage, PeoplePage, NotesPage } from "./pages";
+import { PinPad } from "./secret/PinPad";
+import { Starfield } from "./ui/Starfield";
+import { Aurora } from "./ui/Aurora";
+import { useSeason } from "@/hooks/useSeason";
+import { useSecret } from "@/hooks/useSecret";
+
+type Msg = { role:string; text:string; translated?:string; showTranslation?:boolean; imageUrl?:string };
+
+export default function TenouchiApp() {
+  const [page, setPage] = useState<PageId>("timeline");
+  const { season, theme } = useSeason();
+  const { isSecret, showPinPad: showPin, requestUnlock: requestSecret, unlock: confirmPin, lock: exitSecret } = useSecret();
+  const [searchQuery, setSearchQuery] = useState("");
+  const secretTheme = isSecret ? { ...theme, bg1:"#0A0A0F", bg2:"#12051A", accent:"#FF2D78", accent2:"#FF6EC7", aurora1:"rgba(255,45,120,0.06)", aurora2:"rgba(255,110,199,0.04)", aurora3:"rgba(157,78,221,0.05)" } : theme;
+
+  const renderPage = () => {
+    switch(page) {
+      case "timeline": return <TimelinePage theme={secretTheme} />;
+      case "money": return <MoneyPage theme={secretTheme} isSecret={isSecret} />;
+      case "family": return <FamilyPage theme={secretTheme} />;
+      case "discover": return <DiscoverPage theme={secretTheme} />;
+      case "people": return <PeoplePage theme={secretTheme} isSecret={isSecret} onRequestUnlock={requestSecret} />;
+      case "notes": return <NotesPage theme={secretTheme} />;
+      default: return <TimelinePage theme={secretTheme} />;
+    }
+  };
+  const handleLongPress = () => { if (isSecret) exitSecret(); else requestSecret(); };
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([{role:"ai",text:"おはようございます。何かご用件はありますか？\n\n📷 名刺やレシートの写真も読み取れます。"}]);
+  const [chatInput, setChatInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const chatEnd = useRef<HTMLDivElement>(null);
+  const composing = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [listening, setListening] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => { chatEnd.current?.scrollIntoView({behavior:"smooth"}); }, [msgs, typing]);
+
+  const speak = (text: string) => {
+    if (!voiceEnabled || typeof window === "undefined") return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(text) ? "ja-JP" : "en-US";
+    u.rate = 1.1;
+    window.speechSynthesis.speak(u);
+  };
+
+  const startListening = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("音声入力非対応"); return; }
+    const r = new SR(); r.lang = "ja-JP"; r.interimResults = true;
+    r.onstart = () => setListening(true);
+    r.onresult = (e:any) => setChatInput(Array.from(e.results).map((r:any) => r[0].transcript).join(""));
+    r.onend = () => setListening(false);
+    r.onerror = () => setListening(false);
+    recognitionRef.current = r; r.start();
+  };
+  const stopListening = () => { recognitionRef.current?.stop(); setListening(false); };
+
+  const sendMsg = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput.trim();
+    setMsgs(p => [...p, {role:"user",text:userMsg}]); setChatInput(""); setTyping(true);
+    try {
+      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:userMsg})});
+      const data = await res.json();
+      const reply = data.reply || "了解しました。";
+      setMsgs(p => [...p, {role:"ai",text:reply}]); speak(reply);
+    } catch { setMsgs(p => [...p, {role:"ai",text:"接続エラー。"}]); }
+    setTyping(false);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const url = URL.createObjectURL(file);
+    setMsgs(p => [...p, {role:"user",text:"📷 画像送信中...",imageUrl:url}]); setTyping(true);
+    try {
+      const fd = new FormData(); fd.append("image", file); fd.append("type", "business_card");
+      const res = await fetch("/api/ocr", {method:"POST", body:fd});
+      const data = await res.json();
+      let reply = "画像読み取り失敗";
+      if (data.data?.total) reply = "📋 レシート\n🏪 " + (data.data.store||"不明") + "\n💰 ¥" + (data.data.total||0).toLocaleString() + "\n📁 " + (data.data.category||"その他");
+      else if (data.data?.name) reply = "📇 名刺\n👤 " + (data.data.name||"不明") + "\n🏢 " + (data.data.company||"") + "\n📧 " + (data.data.email||"") + "\n📱 " + (data.data.phone||"");
+      else if (data.data?.summary) reply = data.data.summary;
+      setMsgs(p => [...p, {role:"ai",text:reply}]); speak(reply.split("\n")[0]);
+    } catch { setMsgs(p => [...p, {role:"ai",text:"画像処理エラー"}]); }
+    setTyping(false); if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key==="Enter" && !composing.current) { e.preventDefault(); sendMsg(); } };
+
+  const handleTranslate = async (i:number, m:Msg) => {
+    if (m.role !== "ai") return;
+    if (m.translated) { setMsgs(p => p.map((msg,idx) => idx===i ? {...msg,showTranslation:!msg.showTranslation} : msg)); return; }
+    try {
+      const res = await fetch("/api/secretary", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({translate:true, originalText:m.text})});
+      const data = await res.json();
+      setMsgs(p => p.map((msg,idx) => idx===i ? {...msg, translated:data.reply, showTranslation:true} : msg));
+    } catch {}
+  };
+
+  const suggestions = ["未読メールある？","ガソリン5000円","あいりに連絡して","今月の支出まとめ"];
+
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,"+secretTheme.bg1+","+secretTheme.bg2+")",color:"#F0F0F5",fontFamily:"'Rajdhani',sans-serif",position:"relative",overflow:"hidden"}}>
+      <Starfield sc={secretTheme.sc || "#F0F0F5"} /><Aurora theme={secretTheme} />
+      {showPin && <PinPad onSuccess={confirmPin} onCancel={() => {}} />}
+      <Header theme={secretTheme} season={season} isSecret={isSecret} profileName="たく" onLongPress={handleLongPress} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+      <div style={{paddingBottom:80,position:"relative",zIndex:1}}>{renderPage()}</div>
+      <BottomNav page={page} setPage={setPage} isSecret={isSecret} theme={secretTheme} />
+      <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleImageUpload} style={{display:"none"}} />
+
+      {!chatOpen && <button onClick={() => setChatOpen(true)} style={{position:"fixed",bottom:80,right:20,width:56,height:56,borderRadius:16,border:"none",cursor:"pointer",zIndex:101,background:"linear-gradient(135deg,"+secretTheme.accent+","+secretTheme.accent2+")",boxShadow:"0 4px 20px "+secretTheme.accent+"40",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:24}}>★</span></button>}
+
+      {chatOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:200}}>
+          <div onClick={() => setChatOpen(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}} />
+          <div style={{position:"absolute",bottom:0,left:0,right:0,height:"85vh",background:"linear-gradient(180deg,rgba(18,20,35,0.98),rgba(12,14,28,0.99))",borderRadius:"24px 24px 0 0",border:"1px solid rgba(255,255,255,0.08)",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><span style={{fontSize:12,fontWeight:700,letterSpacing:4,fontFamily:"'Orbitron',sans-serif",color:secretTheme.accent}}>SECRETARY</span><span style={{fontSize:10,color:"#00D68F",marginLeft:8}}>● online</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={() => setVoiceEnabled(!voiceEnabled)} style={{background:"none",border:"none",fontSize:16,cursor:"pointer",opacity:voiceEnabled?1:0.3}}>{voiceEnabled?"🔊":"🔇"}</button>
+                <button onClick={() => setChatOpen(false)} style={{background:"none",border:"none",color:"#F0F0F5",fontSize:20,cursor:"pointer"}}>×</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12}}>
+              {msgs.map((m,i) => (
+                <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                  <div onClick={() => handleTranslate(i,m)} style={{maxWidth:"80%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"linear-gradient(135deg,"+secretTheme.accent+","+secretTheme.accent2+")":"rgba(255,255,255,0.06)",fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",cursor:m.role==="ai"?"pointer":"default"}}>
+                    {m.imageUrl && <img src={m.imageUrl} alt="" style={{maxWidth:"100%",borderRadius:8,marginBottom:8}} />}
+                    {m.showTranslation ? m.translated : m.text}
+                    {m.role==="ai" && <div style={{fontSize:9,color:secretTheme.accent,marginTop:4,opacity:0.5}}>{m.translated?(m.showTranslation?"▼ 原文":"▼ 翻訳"):"タップで翻訳"}</div>}
+                  </div>
+                </div>
+              ))}
+              {typing && <div style={{display:"flex",gap:4,padding:"10px 14px",background:"rgba(255,255,255,0.06)",borderRadius:16,width:"fit-content"}}>{[0,1,2].map(j=><span key={j} style={{width:6,height:6,borderRadius:"50%",background:secretTheme.accent,animation:"pulse 1s "+j*0.2+"s infinite"}} />)}</div>}
+              <div ref={chatEnd} />
+            </div>
+            <div style={{padding:"0 16px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
+              {suggestions.map(s => <button key={s} onClick={() => setChatInput(s)} style={{padding:"6px 12px",borderRadius:20,border:"1px solid "+secretTheme.accent+"30",background:secretTheme.accent+"08",color:secretTheme.accent,fontSize:11,cursor:"pointer"}}>{s}</button>)}
+            </div>
+            <div style={{padding:"8px 16px 12px"}}>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleKeyDown} onCompositionStart={() => {composing.current=true}} onCompositionEnd={() => {composing.current=false}} placeholder={listening?"聞いています...":"秘書に話しかける..."} style={{flex:1,padding:"12px 16px",borderRadius:16,border:"1px solid "+(listening?"#FF3B3B30":"rgba(255,255,255,0.1)"),background:listening?"rgba(255,59,59,0.04)":"rgba(255,255,255,0.04)",color:"#F0F0F5",fontSize:14,outline:"none"}} />
+                <button onClick={sendMsg} style={{width:44,height:44,borderRadius:14,border:"none",cursor:"pointer",background:chatInput?"linear-gradient(135deg,"+secretTheme.accent+","+secretTheme.accent2+")":"rgba(255,255,255,0.06)",color:"#fff",fontSize:18,flexShrink:0}}>↑</button>
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                <button onClick={() => fileInputRef.current?.click()} style={{padding:"8px 20px",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#F0F0F5",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>📷 <span style={{fontSize:12,opacity:0.6}}>写真</span></button>
+                <button onClick={listening?stopListening:startListening} style={{padding:"8px 20px",borderRadius:20,border:listening?"1px solid #FF3B3B30":"1px solid rgba(255,255,255,0.1)",background:listening?"rgba(255,59,59,0.1)":"rgba(255,255,255,0.04)",color:listening?"#FF6B6B":"#F0F0F5",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6,animation:listening?"pulse 1s infinite":"none"}}>🎤 <span style={{fontSize:12,opacity:0.6}}>{listening?"停止":"音声"}</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
